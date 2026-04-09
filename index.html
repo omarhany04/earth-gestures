@@ -12,10 +12,17 @@
   <style>
     :root {
       color-scheme: dark;
-      --panel-bg: rgba(6, 14, 24, 0.72);
-      --panel-border: rgba(132, 211, 255, 0.24);
-      --panel-text: #d8f0ff;
-      --accent: #69d2ff;
+      --bg-top: #11233e;
+      --bg-mid: #060b14;
+      --bg-bottom: #020307;
+      --panel: rgba(8, 15, 28, 0.74);
+      --panel-border: rgba(145, 220, 255, 0.2);
+      --text: #e6f5ff;
+      --muted: rgba(230, 245, 255, 0.68);
+      --cyan: #71deff;
+      --blue: #4d8cff;
+      --mint: #7dffcc;
+      --warn: #ffc978;
     }
 
     * {
@@ -29,8 +36,21 @@
       height: 100%;
       overflow: hidden;
       background:
-        radial-gradient(circle at top, #10243d 0%, #050910 40%, #010205 100%);
-      font-family: "Segoe UI", sans-serif;
+        radial-gradient(circle at top, var(--bg-top) 0%, var(--bg-mid) 34%, var(--bg-bottom) 78%);
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--text);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(91, 172, 255, 0.18), transparent 30%),
+        radial-gradient(circle at 80% 12%, rgba(125, 255, 204, 0.12), transparent 26%),
+        radial-gradient(circle at 50% 80%, rgba(33, 87, 255, 0.08), transparent 36%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     canvas {
@@ -41,225 +61,625 @@
       display: none;
     }
 
+    #webgl {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+    }
+
     .hud {
       position: fixed;
       top: 18px;
       left: 18px;
-      z-index: 10;
-      width: min(360px, calc(100vw - 36px));
-      padding: 14px 16px;
+      z-index: 4;
+      width: min(430px, calc(100vw - 36px));
+      padding: 18px 18px 16px;
       border: 1px solid var(--panel-border);
-      border-radius: 16px;
-      background: var(--panel-bg);
-      backdrop-filter: blur(10px);
-      color: var(--panel-text);
-      line-height: 1.4;
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      border-radius: 22px;
+      background: var(--panel);
+      backdrop-filter: blur(18px) saturate(130%);
+      box-shadow: 0 26px 70px rgba(0, 0, 0, 0.38);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(113, 222, 255, 0.08);
+      color: var(--cyan);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 18px currentColor;
     }
 
     .hud h1 {
-      margin: 0 0 8px;
-      font-size: 1.1rem;
-      letter-spacing: 0.04em;
-    }
-
-    .hud p {
       margin: 0;
-      font-size: 0.95rem;
+      font-size: clamp(1.45rem, 2.8vw, 2rem);
+      letter-spacing: 0.01em;
     }
 
-    .hud p + p {
-      margin-top: 8px;
+    .lead {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.5;
     }
 
-    .status {
-      color: var(--accent);
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .card {
+      padding: 12px 12px 11px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      min-height: 78px;
+    }
+
+    .card .label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 0.74rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .card .value {
+      font-size: 1rem;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+
+    .card.mode .value {
+      color: var(--cyan);
+    }
+
+    .card.zoom .value {
+      color: var(--mint);
+    }
+
+    .card.tracking .value {
+      color: var(--warn);
+    }
+
+    .tips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .chip {
+      padding: 9px 11px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.2;
+    }
+
+    .hint {
+      margin-top: 14px;
+      color: var(--text);
+      font-size: 0.94rem;
+      line-height: 1.45;
+    }
+
+    .hint strong {
+      color: var(--cyan);
+    }
+
+    .footer-note {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 4;
+      max-width: min(340px, calc(100vw - 36px));
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: rgba(5, 12, 22, 0.68);
+      border: 1px solid rgba(145, 220, 255, 0.16);
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.5;
+      backdrop-filter: blur(14px);
+    }
+
+    @media (max-width: 720px) {
+      .hud {
+        padding: 16px 15px 14px;
+      }
+
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-note {
+        left: 18px;
+        right: 18px;
+        max-width: none;
+      }
     }
   </style>
 </head>
 <body>
+  <canvas id="webgl"></canvas>
+  <canvas id="overlay"></canvas>
+
   <div class="hud">
+    <div class="eyebrow">
+      <span class="dot"></span>
+      Gesture Navigation
+    </div>
     <h1>Gesture Earth</h1>
-    <p>Show one hand to rotate the globe. Show two hands and move them apart or closer to zoom.</p>
-    <p id="status" class="status">Starting camera for hand tracking...</p>
+    <p class="lead">A camera-driven globe that responds only to your hands. Pinch and drag with one hand to grab the planet, then use two hands to zoom with smooth depth control.</p>
+
+    <div class="status-grid">
+      <div class="card mode">
+        <span class="label">Mode</span>
+        <span id="modeValue" class="value">Booting</span>
+      </div>
+      <div class="card zoom">
+        <span class="label">Zoom</span>
+        <span id="zoomValue" class="value">100%</span>
+      </div>
+      <div class="card tracking">
+        <span class="label">Tracking</span>
+        <span id="trackingValue" class="value">Initializing camera</span>
+      </div>
+    </div>
+
+    <div class="tips">
+      <div class="chip">One hand + pinch: grab and rotate</div>
+      <div class="chip">Two hands: spread or close to zoom</div>
+      <div class="chip">Open hand: hover without moving the globe</div>
+    </div>
+
+    <p id="hint" class="hint"><strong>Status:</strong> Requesting webcam access for gesture tracking.</p>
+  </div>
+
+  <div class="footer-note">
+    The hand overlay is a live guide only. If tracking feels noisy, step back a little, face the camera directly, and keep both hands inside frame during zoom.
   </div>
 
   <video id="video" playsinline></video>
 
   <script>
+    const webglCanvas = document.getElementById("webgl");
+    const overlayCanvas = document.getElementById("overlay");
+    const overlayContext = overlayCanvas.getContext("2d");
+    const video = document.getElementById("video");
+
+    const modeValue = document.getElementById("modeValue");
+    const zoomValue = document.getElementById("zoomValue");
+    const trackingValue = document.getElementById("trackingValue");
+    const hint = document.getElementById("hint");
+
     const scene = new THREE.Scene();
 
     const camera = new THREE.PerspectiveCamera(
-      60,
+      52,
       window.innerWidth / window.innerHeight,
       0.1,
-      2000
+      2400
     );
-    camera.position.set(0, 0, 6);
     const cameraTarget = new THREE.Vector3(0, 0, 0);
+    camera.position.set(0, 0, 6.4);
     camera.lookAt(cameraTarget);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({
+      canvas: webglCanvas,
+      antialias: true,
+      alpha: true
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputEncoding = THREE.sRGBEncoding;
-    document.body.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0x8eb8ff, 0.65);
-    scene.add(ambientLight);
+    const earthRig = new THREE.Group();
+    scene.add(earthRig);
 
-    const sunLight = new THREE.PointLight(0xffffff, 1.8, 40);
-    sunLight.position.set(8, 4, 10);
+    const hemisphereLight = new THREE.HemisphereLight(0xa4d4ff, 0x05070f, 0.85);
+    scene.add(hemisphereLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.65);
+    sunLight.position.set(5, 2.5, 6);
     scene.add(sunLight);
+
+    const rimLight = new THREE.PointLight(0x4ba8ff, 1.3, 40);
+    rimLight.position.set(-8, -1, -5);
+    scene.add(rimLight);
 
     const textureLoader = new THREE.TextureLoader();
     const earthTexture = textureLoader.load(
       "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg"
     );
+    const earthBump = textureLoader.load(
+      "https://threejs.org/examples/textures/planets/earth_normal_2048.jpg"
+    );
+    const earthSpecular = textureLoader.load(
+      "https://threejs.org/examples/textures/planets/earth_specular_2048.jpg"
+    );
+    const cloudTexture = textureLoader.load(
+      "https://threejs.org/examples/textures/planets/earth_clouds_1024.png"
+    );
 
     const earth = new THREE.Mesh(
-      new THREE.SphereGeometry(2, 64, 64),
-      new THREE.MeshStandardMaterial({
+      new THREE.SphereGeometry(2, 96, 96),
+      new THREE.MeshPhongMaterial({
         map: earthTexture,
-        roughness: 0.95,
-        metalness: 0.02
+        normalMap: earthBump,
+        specularMap: earthSpecular,
+        shininess: 18,
+        specular: new THREE.Color(0x224466)
       })
     );
-    scene.add(earth);
+    earthRig.add(earth);
 
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(2.14, 64, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x3dbdff,
+    const clouds = new THREE.Mesh(
+      new THREE.SphereGeometry(2.03, 96, 96),
+      new THREE.MeshLambertMaterial({
+        map: cloudTexture,
         transparent: true,
-        opacity: 0.12,
+        opacity: 0.34,
+        depthWrite: false
+      })
+    );
+    earthRig.add(clouds);
+
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(2.16, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x4dc5ff,
+        transparent: true,
+        opacity: 0.16,
         blending: THREE.AdditiveBlending,
         side: THREE.BackSide
       })
     );
-    scene.add(glow);
+    earthRig.add(atmosphere);
 
-    const starVertices = [];
-    for (let i = 0; i < 7000; i += 1) {
-      starVertices.push(
-        (Math.random() - 0.5) * 1600,
-        (Math.random() - 0.5) * 1600,
-        (Math.random() - 0.5) * 1600
+    const outerHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(2.55, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x1b6cff,
+        transparent: true,
+        opacity: 0.035,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide
+      })
+    );
+    earthRig.add(outerHalo);
+
+    const starPositions = [];
+    const starColors = [];
+
+    for (let i = 0; i < 9500; i += 1) {
+      const radius = 900 + Math.random() * 1200;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+
+      starPositions.push(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.sin(phi) * Math.sin(theta),
+        radius * Math.cos(phi)
       );
+
+      const shade = 0.7 + Math.random() * 0.3;
+      starColors.push(shade, shade, 1);
     }
 
-    const starGeometry = new THREE.BufferGeometry();
-    starGeometry.setAttribute(
+    const starsGeometry = new THREE.BufferGeometry();
+    starsGeometry.setAttribute(
       "position",
-      new THREE.Float32BufferAttribute(starVertices, 3)
+      new THREE.Float32BufferAttribute(starPositions, 3)
+    );
+    starsGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(starColors, 3)
     );
 
     const stars = new THREE.Points(
-      starGeometry,
+      starsGeometry,
       new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 1.1,
-        sizeAttenuation: true
+        size: 2,
+        sizeAttenuation: true,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9
       })
     );
     scene.add(stars);
 
-    const video = document.getElementById("video");
-    const status = document.getElementById("status");
+    const gesture = {
+      mode: "Booting",
+      tracking: "Initializing camera",
+      hint: "Requesting webcam access for gesture tracking.",
+      zoomPercent: 100,
+      rotationVelocityX: 0,
+      rotationVelocityY: 0,
+      rollTarget: 0,
+      targetDistance: 6.4,
+      activeDistance: 6.4,
+      smoothedRotationInputX: 0,
+      smoothedRotationInputY: 0,
+      leftHand: null,
+      rightHand: null,
+      handsForOverlay: [],
+      lastGrabPoint: null,
+      lastTwoHandDistance: null,
+      lastTwoHandMidpoint: null,
+      lastTwoHandAngle: null,
+      confidence: 0
+    };
 
-    const minCameraDistance = 3;
-    const maxCameraDistance = 10;
-    const rotationVelocity = { x: 0, y: 0 };
+    const MIN_DISTANCE = 3.1;
+    const MAX_DISTANCE = 10;
+    const AUTO_SPIN = 0.0025;
+    const ROTATION_DAMPING = 0.18;
+    const CAMERA_DAMPING = 0.12;
+    const ROLL_DAMPING = 0.08;
 
-    let lastPinchDistance = null;
-    let lastSingleHandPoint = null;
+    const HAND_CONNECTIONS = [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 5], [5, 6], [6, 7], [7, 8],
+      [5, 9], [9, 10], [10, 11], [11, 12],
+      [9, 13], [13, 14], [14, 15], [15, 16],
+      [13, 17], [17, 18], [18, 19], [19, 20],
+      [0, 17]
+    ];
 
-    function getCurrentDistance() {
-      return camera.position.distanceTo(cameraTarget);
+    function setHUD() {
+      modeValue.textContent = gesture.mode;
+      zoomValue.textContent = `${gesture.zoomPercent}%`;
+      trackingValue.textContent = gesture.tracking;
+      hint.innerHTML = `<strong>Status:</strong> ${gesture.hint}`;
     }
 
-    function setCameraDistance(nextDistance) {
-      let offset = camera.position.clone().sub(cameraTarget);
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
 
-      if (offset.lengthSq() === 0) {
-        offset = new THREE.Vector3(0, 0, 1);
+    function lerp(start, end, alpha) {
+      return start + ((end - start) * alpha);
+    }
+
+    function getHandednessLabel(results, index) {
+      const entry = results.multiHandedness && results.multiHandedness[index];
+      const classification = entry && entry.label ? entry.label : entry && entry.classification && entry.classification[0] ? entry.classification[0].label : null;
+      return classification || (index === 0 ? "Left" : "Right");
+    }
+
+    function pointDistance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function averagePoints(points) {
+      const sum = points.reduce(
+        (accumulator, point) => {
+          accumulator.x += point.x;
+          accumulator.y += point.y;
+          return accumulator;
+        },
+        { x: 0, y: 0 }
+      );
+
+      return {
+        x: sum.x / points.length,
+        y: sum.y / points.length
+      };
+    }
+
+    function getPalmCenter(hand) {
+      return averagePoints([hand[0], hand[5], hand[9], hand[13], hand[17]]);
+    }
+
+    function getGrabPoint(hand) {
+      return averagePoints([hand[8], hand[9]]);
+    }
+
+    function getPinchStrength(hand) {
+      const tipDistance = pointDistance(hand[4], hand[8]);
+      const palmWidth = pointDistance(hand[5], hand[17]);
+      const ratio = palmWidth > 0 ? tipDistance / palmWidth : 1;
+      return clamp(1 - ((ratio - 0.15) / 0.45), 0, 1);
+    }
+
+    function assignHands(results) {
+      const landmarks = results.multiHandLandmarks || [];
+      const handedness = results.multiHandedness || [];
+
+      gesture.leftHand = null;
+      gesture.rightHand = null;
+      gesture.handsForOverlay = [];
+
+      landmarks.forEach((hand, index) => {
+        const label = getHandednessLabel({ multiHandedness: handedness }, index);
+        const pinchStrength = getPinchStrength(hand);
+        const palm = getPalmCenter(hand);
+        const grab = getGrabPoint(hand);
+        const descriptor = {
+          landmarks: hand,
+          label,
+          palm,
+          grab,
+          pinchStrength
+        };
+
+        gesture.handsForOverlay.push(descriptor);
+
+        if (label === "Left") {
+          gesture.leftHand = descriptor;
+        } else if (label === "Right") {
+          gesture.rightHand = descriptor;
+        } else if (!gesture.leftHand) {
+          gesture.leftHand = descriptor;
+        } else {
+          gesture.rightHand = descriptor;
+        }
+      });
+
+      gesture.handsForOverlay.sort((firstHand, secondHand) => firstHand.palm.x - secondHand.palm.x);
+
+      if (!gesture.leftHand && gesture.handsForOverlay[0]) {
+        gesture.leftHand = gesture.handsForOverlay[0];
       }
 
-      offset.setLength(nextDistance);
-      camera.position.copy(cameraTarget).add(offset);
-      camera.lookAt(cameraTarget);
+      if (!gesture.rightHand && gesture.handsForOverlay[1]) {
+        gesture.rightHand = gesture.handsForOverlay[1];
+      }
     }
 
-    function distance(pointA, pointB) {
-      return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
+    function resetSingleHandState() {
+      gesture.lastGrabPoint = null;
     }
 
-    function getHandAnchor(handLandmarks) {
-      const anchor = handLandmarks[9];
-      return { x: anchor.x, y: anchor.y };
+    function resetTwoHandState() {
+      gesture.lastTwoHandDistance = null;
+      gesture.lastTwoHandMidpoint = null;
+      gesture.lastTwoHandAngle = null;
     }
 
-    function handleSingleHandRotation(handLandmarks) {
-      const currentPoint = getHandAnchor(handLandmarks);
+    function useSingleHandRotation(activeHand) {
+      const pinching = activeHand.pinchStrength > 0.72;
 
-      if (lastSingleHandPoint) {
-        const deltaX = currentPoint.x - lastSingleHandPoint.x;
-        const deltaY = currentPoint.y - lastSingleHandPoint.y;
+      gesture.mode = pinching ? "Grab Rotate" : "Hand Hover";
+      gesture.tracking = "1 hand live";
+      gesture.hint = pinching
+        ? "Pinch with one hand and move it to rotate the Earth."
+        : "One hand is visible. Pinch thumb and index finger together to grab the globe.";
 
-        rotationVelocity.y = THREE.MathUtils.lerp(
-          rotationVelocity.y,
-          deltaX * 8,
-          0.35
+      resetTwoHandState();
+
+      if (!pinching) {
+        resetSingleHandState();
+        return;
+      }
+
+      const currentGrab = activeHand.grab;
+
+      if (gesture.lastGrabPoint) {
+        const deltaX = currentGrab.x - gesture.lastGrabPoint.x;
+        const deltaY = currentGrab.y - gesture.lastGrabPoint.y;
+
+        gesture.smoothedRotationInputY = lerp(
+          gesture.smoothedRotationInputY,
+          deltaX * 10,
+          0.34
         );
-        rotationVelocity.x = THREE.MathUtils.lerp(
-          rotationVelocity.x,
+        gesture.smoothedRotationInputX = lerp(
+          gesture.smoothedRotationInputX,
           deltaY * 8,
-          0.35
+          0.34
         );
       }
 
-      lastSingleHandPoint = currentPoint;
+      gesture.lastGrabPoint = currentGrab;
     }
 
-    function handleTwoHandZoom(allHands) {
-      const hand1 = getHandAnchor(allHands[0]);
-      const hand2 = getHandAnchor(allHands[1]);
-      const currentDistance = distance(hand1, hand2);
+    function useTwoHandZoom(leftHand, rightHand) {
+      gesture.mode = "Dual Zoom";
+      gesture.tracking = "2 hands live";
+      gesture.hint = "Keep both hands in frame. Move them apart to zoom in and closer together to zoom out.";
+      resetSingleHandState();
 
-      if (lastPinchDistance !== null) {
-        const delta = currentDistance - lastPinchDistance;
-        const nextDistance = THREE.MathUtils.clamp(
-          getCurrentDistance() - delta * 12,
-          minCameraDistance,
-          maxCameraDistance
+      const midpoint = averagePoints([leftHand.palm, rightHand.palm]);
+      const distance = pointDistance(leftHand.palm, rightHand.palm);
+      const angle = Math.atan2(
+        rightHand.palm.y - leftHand.palm.y,
+        rightHand.palm.x - leftHand.palm.x
+      );
+
+      if (gesture.lastTwoHandDistance !== null) {
+        const distanceDelta = distance - gesture.lastTwoHandDistance;
+        gesture.targetDistance = clamp(
+          gesture.targetDistance - (distanceDelta * 11.5),
+          MIN_DISTANCE,
+          MAX_DISTANCE
         );
-
-        setCameraDistance(nextDistance);
       }
 
-      lastPinchDistance = currentDistance;
+      if (gesture.lastTwoHandMidpoint) {
+        const midpointDeltaX = midpoint.x - gesture.lastTwoHandMidpoint.x;
+        const midpointDeltaY = midpoint.y - gesture.lastTwoHandMidpoint.y;
+
+        gesture.smoothedRotationInputY = lerp(
+          gesture.smoothedRotationInputY,
+          midpointDeltaX * 8,
+          0.2
+        );
+        gesture.smoothedRotationInputX = lerp(
+          gesture.smoothedRotationInputX,
+          midpointDeltaY * 6.5,
+          0.2
+        );
+      }
+
+      if (gesture.lastTwoHandAngle !== null) {
+        const angleDelta = angle - gesture.lastTwoHandAngle;
+        gesture.rollTarget = clamp(
+          gesture.rollTarget + angleDelta * 1.2,
+          -0.45,
+          0.45
+        );
+      }
+
+      gesture.lastTwoHandDistance = distance;
+      gesture.lastTwoHandMidpoint = midpoint;
+      gesture.lastTwoHandAngle = angle;
     }
 
     function onResults(results) {
-      const landmarks = results.multiHandLandmarks || [];
+      assignHands(results);
 
-      if (landmarks.length === 1) {
-        lastPinchDistance = null;
-        handleSingleHandRotation(landmarks[0]);
-        status.textContent = "One hand detected: move your hand to rotate the Earth.";
-        return;
+      const handCount = gesture.handsForOverlay.length;
+
+      if (handCount === 0) {
+        gesture.mode = "Idle";
+        gesture.tracking = "No hands";
+        gesture.hint = "Show one hand and pinch to grab the globe, or show two hands to zoom.";
+        resetSingleHandState();
+        resetTwoHandState();
+      } else if (handCount === 1) {
+        useSingleHandRotation(gesture.handsForOverlay[0]);
+      } else {
+        useTwoHandZoom(gesture.handsForOverlay[0], gesture.handsForOverlay[1]);
       }
 
-      if (landmarks.length === 2) {
-        lastSingleHandPoint = null;
-        handleTwoHandZoom(landmarks);
-        status.textContent = "Two hands detected: move them apart to zoom in and closer to zoom out.";
-        return;
-      }
+      const normalizedZoom = 1 - ((gesture.targetDistance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE));
+      gesture.zoomPercent = Math.round(lerp(68, 142, normalizedZoom));
+      gesture.confidence = gesture.handsForOverlay.reduce(
+        (sum, hand) => sum + hand.pinchStrength,
+        0
+      ) / Math.max(1, handCount);
 
-      lastSingleHandPoint = null;
-      lastPinchDistance = null;
-      status.textContent = "Show one hand to rotate the Earth or two hands to zoom.";
+      setHUD();
+      drawOverlay();
     }
 
     const hands = new Hands({
@@ -269,7 +689,7 @@
     hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 1,
-      minDetectionConfidence: 0.7,
+      minDetectionConfidence: 0.75,
       minTrackingConfidence: 0.7
     });
     hands.onResults(onResults);
@@ -278,47 +698,157 @@
       onFrame: async () => {
         await hands.send({ image: video });
       },
-      width: 640,
-      height: 480
+      width: 960,
+      height: 720
     });
 
     async function startHandTracking() {
       try {
         await mediaPipeCamera.start();
-        status.textContent = "Camera ready. Show one hand to rotate or two hands to zoom.";
+        gesture.mode = "Ready";
+        gesture.tracking = "Camera live";
+        gesture.hint = "Show one hand and pinch to start rotating the planet.";
       } catch (error) {
-        console.error("Failed to start camera:", error);
-        status.textContent = "Camera access was blocked, so gesture controls could not start.";
+        console.error("Unable to start MediaPipe camera:", error);
+        gesture.mode = "Camera Blocked";
+        gesture.tracking = "Permission needed";
+        gesture.hint = "Webcam access is required for gesture navigation. Allow camera access and reload the page.";
       }
+
+      setHUD();
     }
 
-    startHandTracking();
+    function resizeOverlay() {
+      const pixelRatio = Math.min(window.devicePixelRatio, 2);
+      overlayCanvas.width = Math.floor(window.innerWidth * pixelRatio);
+      overlayCanvas.height = Math.floor(window.innerHeight * pixelRatio);
+      overlayCanvas.style.width = `${window.innerWidth}px`;
+      overlayCanvas.style.height = `${window.innerHeight}px`;
+      overlayContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    function drawHand(hand, index) {
+      const hue = index === 0 ? "113, 222, 255" : "125, 255, 204";
+      const solid = `rgba(${hue}, 0.95)`;
+      const soft = `rgba(${hue}, 0.2)`;
+      const pinchGlow = `rgba(${hue}, ${0.12 + (hand.pinchStrength * 0.35)})`;
+
+      overlayContext.lineWidth = 2;
+      overlayContext.strokeStyle = soft;
+
+      HAND_CONNECTIONS.forEach(([start, end]) => {
+        const startPoint = hand.landmarks[start];
+        const endPoint = hand.landmarks[end];
+
+        overlayContext.beginPath();
+        overlayContext.moveTo(startPoint.x * window.innerWidth, startPoint.y * window.innerHeight);
+        overlayContext.lineTo(endPoint.x * window.innerWidth, endPoint.y * window.innerHeight);
+        overlayContext.stroke();
+      });
+
+      hand.landmarks.forEach((point, pointIndex) => {
+        const x = point.x * window.innerWidth;
+        const y = point.y * window.innerHeight;
+        const isKeyPoint = pointIndex === 4 || pointIndex === 8 || pointIndex === 9;
+
+        overlayContext.beginPath();
+        overlayContext.fillStyle = isKeyPoint ? solid : "rgba(255, 255, 255, 0.78)";
+        overlayContext.arc(x, y, isKeyPoint ? 5 : 3, 0, Math.PI * 2);
+        overlayContext.fill();
+      });
+
+      overlayContext.beginPath();
+      overlayContext.fillStyle = pinchGlow;
+      overlayContext.arc(
+        hand.grab.x * window.innerWidth,
+        hand.grab.y * window.innerHeight,
+        18 + (hand.pinchStrength * 16),
+        0,
+        Math.PI * 2
+      );
+      overlayContext.fill();
+    }
+
+    function drawOverlay() {
+      overlayContext.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      gesture.handsForOverlay.forEach((hand, index) => {
+        drawHand(hand, index);
+      });
+
+      if (gesture.handsForOverlay.length === 2) {
+        const [firstHand, secondHand] = gesture.handsForOverlay;
+        overlayContext.beginPath();
+        overlayContext.strokeStyle = "rgba(255, 255, 255, 0.16)";
+        overlayContext.lineWidth = 3;
+        overlayContext.moveTo(
+          firstHand.palm.x * window.innerWidth,
+          firstHand.palm.y * window.innerHeight
+        );
+        overlayContext.lineTo(
+          secondHand.palm.x * window.innerWidth,
+          secondHand.palm.y * window.innerHeight
+        );
+        overlayContext.stroke();
+      }
+    }
 
     function animate() {
       requestAnimationFrame(animate);
 
-      earth.rotation.y += rotationVelocity.y;
-      earth.rotation.x = THREE.MathUtils.clamp(
-        earth.rotation.x + rotationVelocity.x,
-        -1.1,
-        1.1
+      gesture.rotationVelocityX = lerp(
+        gesture.rotationVelocityX,
+        gesture.smoothedRotationInputX,
+        ROTATION_DAMPING
       );
-      glow.rotation.copy(earth.rotation);
-      stars.rotation.y += 0.00008;
-      rotationVelocity.x *= 0.9;
-      rotationVelocity.y *= 0.9;
+      gesture.rotationVelocityY = lerp(
+        gesture.rotationVelocityY,
+        gesture.smoothedRotationInputY,
+        ROTATION_DAMPING
+      );
+
+      earthRig.rotation.y += AUTO_SPIN + gesture.rotationVelocityY;
+      earthRig.rotation.x = clamp(
+        earthRig.rotation.x + gesture.rotationVelocityX,
+        -1.05,
+        1.05
+      );
+      earthRig.rotation.z = lerp(earthRig.rotation.z, gesture.rollTarget, ROLL_DAMPING);
+
+      clouds.rotation.y += 0.0018;
+      stars.rotation.y += 0.00005;
+      stars.rotation.x += 0.000015;
+
+      gesture.smoothedRotationInputX *= 0.82;
+      gesture.smoothedRotationInputY *= 0.82;
+      gesture.rollTarget *= 0.97;
+
+      gesture.activeDistance = lerp(
+        gesture.activeDistance,
+        gesture.targetDistance,
+        CAMERA_DAMPING
+      );
+      camera.position.z = gesture.activeDistance;
       camera.lookAt(cameraTarget);
+
       renderer.render(scene, camera);
     }
 
-    animate();
-
-    window.addEventListener("resize", () => {
+    function handleResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+      resizeOverlay();
+      drawOverlay();
+    }
+
+    window.addEventListener("resize", handleResize);
+
+    resizeOverlay();
+    setHUD();
+    startHandTracking();
+    animate();
   </script>
 </body>
 </html>
