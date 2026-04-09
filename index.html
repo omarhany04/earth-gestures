@@ -310,7 +310,7 @@
       <div class="chip">Twist hand left/right: tilt Earth</div>
       <div class="chip">Two hands: spread or close to zoom</div>
       <div class="chip">One fist: fire an energy pulse</div>
-      <div class="chip">Two fists: reset the globe view</div>
+      <div class="chip">Two fists: trigger overdrive spin</div>
     </div>
 
     <p id="hint" class="hint"><strong>Status:</strong> Requesting webcam access for gesture tracking.</p>
@@ -567,27 +567,23 @@
       lastTwoHandAngle: null,
       pulseHoldStart: null,
       pulseReady: true,
-      resetHoldStart: null,
-      resetReady: true,
+      overdriveHoldStart: null,
+      overdriveReady: true,
       lastPulseAt: -Infinity,
-      lastResetAt: -Infinity,
-      homeBlend: 0,
+      lastOverdriveAt: -Infinity,
       confidence: 0
     };
 
     const MIN_DISTANCE = 3.1;
     const MAX_DISTANCE = 10;
-    const HOME_DISTANCE = 6.4;
-    const HOME_ROTATION_X = 0.16;
-    const HOME_ROTATION_Y = 0.25;
     const AUTO_SPIN = 0.0025;
     const ROTATION_DAMPING = 0.18;
     const CAMERA_DAMPING = 0.12;
     const ROLL_DAMPING = 0.08;
     const PULSE_HOLD_MS = 260;
-    const RESET_HOLD_MS = 380;
+    const OVERDRIVE_HOLD_MS = 380;
     const PULSE_DURATION_MS = 1200;
-    const RESET_FLASH_MS = 950;
+    const OVERDRIVE_FLASH_MS = 950;
     const ATMOSPHERE_BASE_OPACITY = 0.16;
     const HALO_BASE_OPACITY = 0.035;
     const ORBIT_RING_BASE_OPACITY = 0.18;
@@ -759,18 +755,15 @@
       gesture.smoothedRotationInputY += 0.015;
     }
 
-    function triggerHomeReset() {
-      gesture.lastResetAt = performance.now();
-      gesture.mode = "Home Reset";
-      gesture.tracking = "View recentered";
-      gesture.hint = "Double-fist squeeze detected. Returning the globe to its home view.";
-      gesture.targetDistance = HOME_DISTANCE;
-      gesture.homeBlend = 1;
-      gesture.rollTarget = 0;
-      gesture.smoothedRotationInputX = 0;
-      gesture.smoothedRotationInputY = 0;
-      gesture.rotationVelocityX = 0;
-      gesture.rotationVelocityY = 0;
+    function triggerOverdriveBurst() {
+      gesture.lastOverdriveAt = performance.now();
+      gesture.mode = "Overdrive Burst";
+      gesture.tracking = "Spin surge";
+      gesture.hint = "Double-fist squeeze detected. The globe kicked into overdrive.";
+      gesture.smoothedRotationInputY += 0.22;
+      gesture.smoothedRotationInputX += 0.04;
+      gesture.rotationVelocityY += 0.08;
+      gesture.rollTarget = clamp(gesture.rollTarget + 0.18, -0.65, 0.65);
     }
 
     function useSingleHandRotation(activeHand) {
@@ -778,8 +771,8 @@
       const pinching = activeHand.pinchStrength > 0.72;
       const clenching = activeHand.clenchStrength > 0.76;
 
-      gesture.resetHoldStart = null;
-      gesture.resetReady = true;
+      gesture.overdriveHoldStart = null;
+      gesture.overdriveReady = true;
 
       if (clenching && !pinching) {
         gesture.mode = "Squeeze Charge";
@@ -821,6 +814,12 @@
 
       resetTwoHandState();
 
+      if (!pinching) {
+        gesture.lastGrabPoint = null;
+        gesture.lastSingleHandAngle = null;
+        return;
+      }
+
       if (gesture.lastSingleHandAngle !== null) {
         const angleDelta = normalizeAngle(activeHand.handAngle - gesture.lastSingleHandAngle);
         gesture.rollTarget = clamp(
@@ -831,11 +830,6 @@
       }
 
       gesture.lastSingleHandAngle = activeHand.handAngle;
-
-      if (!pinching) {
-        gesture.lastGrabPoint = null;
-        return;
-      }
 
       const currentGrab = activeHand.grab;
 
@@ -868,36 +862,36 @@
       if (doubleClench) {
         gesture.mode = "Dual Squeeze";
         gesture.tracking = "2 hands live";
-        gesture.hint = gesture.resetReady
-          ? "Hold both fists briefly to reset the globe and zoom."
-          : "Release both fists to arm the next reset.";
+        gesture.hint = gesture.overdriveReady
+          ? "Hold both fists briefly to trigger overdrive spin."
+          : "Release both fists to arm the next overdrive burst.";
 
         resetSingleHandState();
         resetTwoHandState();
 
-        if (gesture.resetHoldStart === null) {
-          gesture.resetHoldStart = now;
+        if (gesture.overdriveHoldStart === null) {
+          gesture.overdriveHoldStart = now;
         }
 
-        if (gesture.resetReady && (now - gesture.resetHoldStart) >= RESET_HOLD_MS) {
-          triggerHomeReset();
-          gesture.resetReady = false;
+        if (gesture.overdriveReady && (now - gesture.overdriveHoldStart) >= OVERDRIVE_HOLD_MS) {
+          triggerOverdriveBurst();
+          gesture.overdriveReady = false;
         }
 
-        if (!gesture.resetReady && (now - gesture.lastResetAt) < 640) {
-          gesture.mode = "Home Reset";
-          gesture.tracking = "View recentered";
+        if (!gesture.overdriveReady && (now - gesture.lastOverdriveAt) < 640) {
+          gesture.mode = "Overdrive Burst";
+          gesture.tracking = "Spin surge";
         }
 
         return;
       }
 
-      gesture.resetHoldStart = null;
-      gesture.resetReady = true;
+      gesture.overdriveHoldStart = null;
+      gesture.overdriveReady = true;
 
       gesture.mode = "Dual Zoom";
       gesture.tracking = "2 hands live";
-      gesture.hint = "Keep both hands in frame. Move them apart to zoom in and closer together to zoom out. Clench both fists to reset.";
+      gesture.hint = "Keep both hands in frame. Move them apart to zoom in and closer together to zoom out. Clench both fists to trigger overdrive.";
       resetSingleHandState();
 
       const midpoint = averagePoints([leftHand.palm, rightHand.palm]);
@@ -954,13 +948,13 @@
       if (handCount === 0) {
         gesture.mode = "Idle";
         gesture.tracking = "No hands";
-        gesture.hint = "Show one hand and pinch to grab the globe, twist your hand to tilt it, clench one fist for a pulse, or clench two fists to reset.";
+        gesture.hint = "Show one hand and pinch to grab the globe, twist your hand to tilt it, clench one fist for a pulse, or clench two fists to trigger overdrive spin.";
         resetSingleHandState();
         resetTwoHandState();
         gesture.pulseHoldStart = null;
         gesture.pulseReady = true;
-        gesture.resetHoldStart = null;
-        gesture.resetReady = true;
+        gesture.overdriveHoldStart = null;
+        gesture.overdriveReady = true;
       } else if (handCount === 1) {
         useSingleHandRotation(gesture.handsForOverlay[0]);
       } else {
@@ -1094,7 +1088,7 @@
       requestAnimationFrame(animate);
       const now = performance.now();
       const pulseStrength = clamp(1 - ((now - gesture.lastPulseAt) / PULSE_DURATION_MS), 0, 1);
-      const resetStrength = clamp(1 - ((now - gesture.lastResetAt) / RESET_FLASH_MS), 0, 1);
+      const overdriveStrength = clamp(1 - ((now - gesture.lastOverdriveAt) / OVERDRIVE_FLASH_MS), 0, 1);
 
       gesture.rotationVelocityX = lerp(
         gesture.rotationVelocityX,
@@ -1114,20 +1108,14 @@
         1.05
       );
       earthRig.rotation.z = lerp(earthRig.rotation.z, gesture.rollTarget, ROLL_DAMPING);
+      earthRig.rotation.y += overdriveStrength * 0.09;
 
-      if (gesture.homeBlend > 0.001) {
-        earthRig.rotation.x = lerp(earthRig.rotation.x, HOME_ROTATION_X, 0.16);
-        earthRig.rotation.y = lerp(earthRig.rotation.y, HOME_ROTATION_Y, 0.11);
-        earthRig.rotation.z = lerp(earthRig.rotation.z, 0, 0.16);
-        gesture.homeBlend *= 0.9;
-      }
-
-      clouds.rotation.y += 0.0018;
-      orbitRing.rotation.z += 0.0022 + (pulseStrength * 0.01);
-      orbitRing.rotation.y += 0.0016;
-      shockwaveRing.rotation.z += 0.012;
+      clouds.rotation.y += 0.0018 + (overdriveStrength * 0.015);
+      orbitRing.rotation.z += 0.0022 + (pulseStrength * 0.01) + (overdriveStrength * 0.05);
+      orbitRing.rotation.y += 0.0016 + (overdriveStrength * 0.02);
+      shockwaveRing.rotation.z += 0.012 + (overdriveStrength * 0.03);
       stars.rotation.y += 0.00005;
-      stars.rotation.x += 0.000015 + (pulseStrength * 0.00025) + (resetStrength * 0.00018);
+      stars.rotation.x += 0.000015 + (pulseStrength * 0.00025) + (overdriveStrength * 0.00018);
 
       gesture.smoothedRotationInputX *= 0.82;
       gesture.smoothedRotationInputY *= 0.82;
@@ -1138,7 +1126,7 @@
         gesture.targetDistance,
         CAMERA_DAMPING
       );
-      camera.position.z = gesture.activeDistance;
+      camera.position.z = gesture.activeDistance + (overdriveStrength * 0.45);
       camera.lookAt(cameraTarget);
 
       pulseShell.scale.setScalar(1 + ((1 - pulseStrength) * 0.65));
@@ -1150,13 +1138,13 @@
       atmosphere.material.color.copy(ATMOSPHERE_BASE_COLOR).lerp(ATMOSPHERE_BOOM_COLOR, pulseStrength * 0.92);
       outerHalo.material.color.copy(HALO_BASE_COLOR).lerp(HALO_BOOM_COLOR, pulseStrength * 0.95);
       orbitRing.material.color.copy(ORBIT_RING_BASE_COLOR).lerp(ORBIT_RING_BOOM_COLOR, pulseStrength * 0.86);
-      atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.12);
-      outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.08) + (resetStrength * 0.06);
-      orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.08);
-      networkNodes.material.opacity = 0.48 + (pulseStrength * 0.28) + (resetStrength * 0.16);
-      networkNodes.rotation.y += 0.0028 + (pulseStrength * 0.012);
+      atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.2) + (overdriveStrength * 0.12);
+      outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.08) + (overdriveStrength * 0.06);
+      orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.2) + (overdriveStrength * 0.12);
+      networkNodes.material.opacity = 0.48 + (pulseStrength * 0.28) + (overdriveStrength * 0.16);
+      networkNodes.rotation.y += 0.0028 + (pulseStrength * 0.012) + (overdriveStrength * 0.028);
       networkNodes.rotation.x = Math.sin(now * 0.00025) * 0.12;
-      stars.material.size = 2 + (pulseStrength * 1.6) + (resetStrength * 0.9);
+      stars.material.size = 2 + (pulseStrength * 1.6) + (overdriveStrength * 1.15);
 
       renderer.render(scene, camera);
     }
