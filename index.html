@@ -308,7 +308,6 @@
 
     <div class="tips">
       <div class="chip">One hand + pinch: grab and rotate</div>
-      <div class="chip">Twist hand left/right: tilt Earth</div>
       <div class="chip">Two hands: spread or close to zoom</div>
       <div class="chip">One fist: fire an energy pulse</div>
       <div class="chip">Two fists: trigger overdrive spin</div>
@@ -453,6 +452,17 @@
     );
     earthRig.add(pulseShell);
 
+    const pulseCore = new THREE.Mesh(
+      new THREE.SphereGeometry(2.06, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff1a8,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    earthRig.add(pulseCore);
+
     const shockwaveRing = new THREE.Mesh(
       new THREE.TorusGeometry(2.32, 0.036, 20, 240),
       new THREE.MeshBasicMaterial({
@@ -464,6 +474,82 @@
     );
     shockwaveRing.rotation.x = Math.PI / 2;
     earthRig.add(shockwaveRing);
+
+    const blastRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.18, 0.05, 20, 240),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd36a,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    blastRing.rotation.x = Math.PI / 2;
+    blastRing.rotation.z = 0.28;
+    earthRig.add(blastRing);
+
+    const pulseFlash = new THREE.PointLight(0xff7a45, 0, 28);
+    pulseFlash.position.set(0, 0, 4.5);
+    scene.add(pulseFlash);
+
+    const sparkCount = 180;
+    const sparkPositions = new Float32Array(sparkCount * 3);
+    const sparkColors = new Float32Array(sparkCount * 3);
+    const sparkDirections = [];
+
+    for (let i = 0; i < sparkCount; i += 1) {
+      sparkPositions[(i * 3) + 0] = 0;
+      sparkPositions[(i * 3) + 1] = 0;
+      sparkPositions[(i * 3) + 2] = 0;
+
+      sparkColors[(i * 3) + 0] = 1;
+      sparkColors[(i * 3) + 1] = 0.55 + (Math.random() * 0.2);
+      sparkColors[(i * 3) + 2] = 0.18 + (Math.random() * 0.08);
+
+      sparkDirections.push(new THREE.Vector3());
+    }
+
+    const sparkGeometry = new THREE.BufferGeometry();
+    sparkGeometry.setAttribute("position", new THREE.BufferAttribute(sparkPositions, 3));
+    sparkGeometry.setAttribute("color", new THREE.BufferAttribute(sparkColors, 3));
+
+    const sparkCloud = new THREE.Points(
+      sparkGeometry,
+      new THREE.PointsMaterial({
+        size: 0.11,
+        transparent: true,
+        opacity: 0,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    earthRig.add(sparkCloud);
+
+    const spinBands = new THREE.Group();
+
+    const spinBandConfigs = [
+      { radius: 2.65, tube: 0.028, x: Math.PI / 2.1, z: 0.18 },
+      { radius: 2.92, tube: 0.024, x: Math.PI / 2.45, z: -0.34 },
+      { radius: 3.18, tube: 0.02, x: Math.PI / 2.75, z: 0.56 }
+    ];
+
+    spinBandConfigs.forEach((config, index) => {
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(config.radius, config.tube, 20, 240),
+        new THREE.MeshBasicMaterial({
+          color: index === 1 ? 0xffd36a : 0xff6a3d,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending
+        })
+      );
+      band.rotation.x = config.x;
+      band.rotation.z = config.z;
+      spinBands.add(band);
+    });
+
+    earthRig.add(spinBands);
 
     const nodePositions = [];
     const nodeColors = [];
@@ -562,7 +648,6 @@
       rightHand: null,
       handsForOverlay: [],
       lastGrabPoint: null,
-      lastSingleHandAngle: null,
       lastTwoHandDistance: null,
       lastTwoHandMidpoint: null,
       lastTwoHandAngle: null,
@@ -633,10 +718,6 @@
       return Math.hypot(a.x - b.x, a.y - b.y);
     }
 
-    function normalizeAngle(angle) {
-      return Math.atan2(Math.sin(angle), Math.cos(angle));
-    }
-
     function averagePoints(points) {
       const sum = points.reduce(
         (accumulator, point) => {
@@ -659,10 +740,6 @@
 
     function getGrabPoint(hand) {
       return averagePoints([hand[8], hand[9]]);
-    }
-
-    function getHandAngle(hand) {
-      return Math.atan2(hand[9].y - hand[0].y, hand[9].x - hand[0].x);
     }
 
     function getPinchStrength(hand) {
@@ -702,13 +779,11 @@
         const clenchStrength = getClenchStrength(hand);
         const palm = getPalmCenter(hand);
         const grab = getGrabPoint(hand);
-        const handAngle = getHandAngle(hand);
         const descriptor = {
           landmarks: hand,
           label,
           palm,
           grab,
-          handAngle,
           pinchStrength,
           clenchStrength
         };
@@ -739,7 +814,6 @@
 
     function resetSingleHandState() {
       gesture.lastGrabPoint = null;
-      gesture.lastSingleHandAngle = null;
     }
 
     function resetTwoHandState() {
@@ -748,12 +822,35 @@
       gesture.lastTwoHandAngle = null;
     }
 
+    function seedPulseSparks() {
+      for (let i = 0; i < sparkCount; i += 1) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1);
+        const radius = 2.05 + (Math.random() * 0.08);
+        const spread = 0.5 + (Math.random() * 0.75);
+        const offset = i * 3;
+
+        sparkDirections[i].set(
+          Math.sin(phi) * Math.cos(theta),
+          Math.sin(phi) * Math.sin(theta),
+          Math.cos(phi)
+        ).multiplyScalar(spread);
+
+        sparkPositions[offset + 0] = sparkDirections[i].x * radius;
+        sparkPositions[offset + 1] = sparkDirections[i].y * radius;
+        sparkPositions[offset + 2] = sparkDirections[i].z * radius;
+      }
+
+      sparkGeometry.attributes.position.needsUpdate = true;
+    }
+
     function triggerPulseBurst() {
       gesture.lastPulseAt = performance.now();
       gesture.mode = "Pulse Burst";
       gesture.tracking = "Energy fired";
       gesture.hint = "Single-hand squeeze detected. An energy pulse rippled through the globe.";
-      gesture.smoothedRotationInputY += 0.015;
+      gesture.smoothedRotationInputY += 0.03;
+      seedPulseSparks();
     }
 
     function triggerOverdriveBurst() {
@@ -761,10 +858,10 @@
       gesture.mode = "Overdrive Burst";
       gesture.tracking = "Spin surge";
       gesture.hint = "Double-fist squeeze detected. The globe kicked into overdrive.";
-      gesture.smoothedRotationInputY += 0.22;
-      gesture.smoothedRotationInputX += 0.04;
-      gesture.rotationVelocityY += 0.08;
-      gesture.rollTarget = clamp(gesture.rollTarget + 0.18, -0.65, 0.65);
+      gesture.smoothedRotationInputY += 0.4;
+      gesture.smoothedRotationInputX += 0.08;
+      gesture.rotationVelocityY += 0.22;
+      gesture.rollTarget = clamp(gesture.rollTarget + 0.3, -0.65, 0.65);
     }
 
     function useSingleHandRotation(activeHand) {
@@ -799,8 +896,6 @@
           gesture.tracking = "Energy fired";
         }
 
-        gesture.lastSingleHandAngle = null;
-
         return;
       }
 
@@ -810,23 +905,14 @@
       gesture.mode = pinching ? "Grab Rotate" : "Hand Hover";
       gesture.tracking = "1 hand live";
       gesture.hint = pinching
-        ? "Pinch with one hand and move it to rotate the Earth. Twist your hand left or right to tilt it."
-        : "One hand is visible. Pinch to rotate, twist your hand while grabbing to tilt, or clench into a fist to trigger a pulse.";
+        ? "Pinch with one hand and move it to rotate the Earth."
+        : "One hand is visible. Pinch to rotate or clench into a fist to trigger a pulse.";
 
       resetTwoHandState();
 
       if (!pinching) {
         gesture.lastGrabPoint = null;
-        gesture.lastSingleHandAngle = null;
         return;
-      }
-
-      if (gesture.lastSingleHandAngle === null) {
-        gesture.lastSingleHandAngle = activeHand.handAngle;
-      } else {
-        const angleDelta = normalizeAngle(activeHand.handAngle - gesture.lastSingleHandAngle);
-        const desiredRoll = clamp(angleDelta * 2.8, -0.95, 0.95);
-        gesture.rollTarget = lerp(gesture.rollTarget, desiredRoll, 0.28);
       }
 
       const currentGrab = activeHand.grab;
@@ -946,7 +1032,7 @@
       if (handCount === 0) {
         gesture.mode = "Idle";
         gesture.tracking = "No hands";
-        gesture.hint = "Show one hand and pinch to grab the globe, twist your hand to tilt it, clench one fist for a pulse, or clench two fists to trigger overdrive spin.";
+        gesture.hint = "Show one hand and pinch to grab the globe, clench one fist for a pulse, or clench two fists to trigger overdrive spin.";
         resetSingleHandState();
         resetTwoHandState();
         gesture.pulseHoldStart = null;
@@ -995,7 +1081,7 @@
         await mediaPipeCamera.start();
         gesture.mode = "Ready";
         gesture.tracking = "Camera live";
-        gesture.hint = "Show one hand and pinch to start rotating the planet, then twist your wrist left or right to tilt it.";
+        gesture.hint = "Show one hand and pinch to start rotating the planet.";
       } catch (error) {
         console.error("Unable to start MediaPipe camera:", error);
         gesture.mode = "Camera Blocked";
@@ -1087,6 +1173,10 @@
       const now = performance.now();
       const pulseStrength = clamp(1 - ((now - gesture.lastPulseAt) / PULSE_DURATION_MS), 0, 1);
       const overdriveStrength = clamp(1 - ((now - gesture.lastOverdriveAt) / OVERDRIVE_FLASH_MS), 0, 1);
+      const pulseProgress = 1 - pulseStrength;
+      const pulseBloom = Math.sin(pulseProgress * Math.PI);
+      const overdriveProgress = 1 - overdriveStrength;
+      const overdrivePulse = Math.sin(overdriveProgress * Math.PI * 10) * overdriveStrength;
 
       gesture.rotationVelocityX = lerp(
         gesture.rotationVelocityX,
@@ -1106,14 +1196,15 @@
         1.05
       );
       earthRig.rotation.z = lerp(earthRig.rotation.z, gesture.rollTarget, ROLL_DAMPING);
-      earthRig.rotation.y += overdriveStrength * 0.09;
+      earthRig.rotation.y += overdriveStrength * 0.18;
 
-      clouds.rotation.y += 0.0018 + (overdriveStrength * 0.015);
-      orbitRing.rotation.z += 0.0022 + (pulseStrength * 0.01) + (overdriveStrength * 0.05);
-      orbitRing.rotation.y += 0.0016 + (overdriveStrength * 0.02);
-      shockwaveRing.rotation.z += 0.012 + (overdriveStrength * 0.03);
+      clouds.rotation.y += 0.0018 + (overdriveStrength * 0.028);
+      orbitRing.rotation.z += 0.0022 + (pulseStrength * 0.016) + (overdriveStrength * 0.08);
+      orbitRing.rotation.y += 0.0016 + (overdriveStrength * 0.032);
+      shockwaveRing.rotation.z += 0.012 + (overdriveStrength * 0.05);
+      blastRing.rotation.z -= 0.022 + (overdriveStrength * 0.055);
       stars.rotation.y += 0.00005;
-      stars.rotation.x += 0.000015 + (pulseStrength * 0.00025) + (overdriveStrength * 0.00018);
+      stars.rotation.x += 0.000015 + (pulseStrength * 0.00028) + (overdriveStrength * 0.00026);
 
       gesture.smoothedRotationInputX *= 0.82;
       gesture.smoothedRotationInputY *= 0.82;
@@ -1124,25 +1215,58 @@
         gesture.targetDistance,
         CAMERA_DAMPING
       );
-      camera.position.z = gesture.activeDistance + (overdriveStrength * 0.45);
+      camera.position.x = Math.sin(now * 0.024) * overdriveStrength * 0.22;
+      camera.position.y = Math.cos(now * 0.028) * overdriveStrength * 0.16;
+      camera.position.z = gesture.activeDistance + (overdriveStrength * 0.85) + (pulseBloom * 0.06);
       camera.lookAt(cameraTarget);
 
-      pulseShell.scale.setScalar(1 + ((1 - pulseStrength) * 0.65));
-      pulseShell.material.opacity = pulseStrength * 0.24;
-      shockwaveRing.scale.setScalar(1 + ((1 - pulseStrength) * 1.45));
-      shockwaveRing.material.opacity = pulseStrength * 0.48;
-      pulseShell.material.color.copy(PULSE_SHELL_BASE_COLOR).lerp(PULSE_SHELL_HOT_COLOR, pulseStrength * 0.72);
-      shockwaveRing.material.color.copy(SHOCKWAVE_BASE_COLOR).lerp(SHOCKWAVE_HOT_COLOR, pulseStrength * 0.6);
-      atmosphere.material.color.copy(ATMOSPHERE_BASE_COLOR).lerp(ATMOSPHERE_BOOM_COLOR, pulseStrength * 0.92);
-      outerHalo.material.color.copy(HALO_BASE_COLOR).lerp(HALO_BOOM_COLOR, pulseStrength * 0.95);
-      orbitRing.material.color.copy(ORBIT_RING_BASE_COLOR).lerp(ORBIT_RING_BOOM_COLOR, pulseStrength * 0.86);
-      atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.2) + (overdriveStrength * 0.12);
-      outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.08) + (overdriveStrength * 0.06);
-      orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.2) + (overdriveStrength * 0.12);
-      networkNodes.material.opacity = 0.48 + (pulseStrength * 0.28) + (overdriveStrength * 0.16);
-      networkNodes.rotation.y += 0.0028 + (pulseStrength * 0.012) + (overdriveStrength * 0.028);
+      pulseCore.scale.setScalar(1 + (pulseProgress * 0.14));
+      pulseCore.material.opacity = pulseStrength * 0.52;
+      pulseShell.scale.setScalar(1 + (pulseProgress * 0.78));
+      pulseShell.material.opacity = (pulseStrength * 0.15) + (pulseBloom * 0.18);
+      shockwaveRing.scale.setScalar(1 + (pulseProgress * 1.75));
+      shockwaveRing.material.opacity = pulseStrength * 0.52;
+      blastRing.scale.setScalar(1 + (pulseProgress * 1.08));
+      blastRing.material.opacity = pulseStrength * 0.32;
+
+      pulseCore.material.color.copy(PULSE_SHELL_HOT_COLOR).lerp(PULSE_SHELL_BASE_COLOR, pulseProgress * 0.5);
+      pulseShell.material.color.copy(PULSE_SHELL_BASE_COLOR).lerp(PULSE_SHELL_HOT_COLOR, pulseBloom * 0.85);
+      shockwaveRing.material.color.copy(SHOCKWAVE_BASE_COLOR).lerp(SHOCKWAVE_HOT_COLOR, pulseBloom * 0.7);
+      blastRing.material.color.copy(SHOCKWAVE_HOT_COLOR).lerp(PULSE_SHELL_BASE_COLOR, pulseProgress * 0.6);
+      atmosphere.material.color.copy(ATMOSPHERE_BASE_COLOR).lerp(ATMOSPHERE_BOOM_COLOR, (pulseStrength * 0.92) + (overdriveStrength * 0.22));
+      outerHalo.material.color.copy(HALO_BASE_COLOR).lerp(HALO_BOOM_COLOR, (pulseStrength * 0.95) + (overdriveStrength * 0.28));
+      orbitRing.material.color.copy(ORBIT_RING_BASE_COLOR).lerp(ORBIT_RING_BOOM_COLOR, (pulseStrength * 0.86) + (overdriveStrength * 0.42));
+
+      atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.24) + (overdriveStrength * 0.18);
+      outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.1) + (overdriveStrength * 0.09);
+      orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.24) + (overdriveStrength * 0.2);
+      networkNodes.material.opacity = 0.48 + (pulseStrength * 0.32) + (overdriveStrength * 0.24);
+      networkNodes.rotation.y += 0.0028 + (pulseStrength * 0.016) + (overdriveStrength * 0.05);
       networkNodes.rotation.x = Math.sin(now * 0.00025) * 0.12;
-      stars.material.size = 2 + (pulseStrength * 1.6) + (overdriveStrength * 1.15);
+      stars.material.size = 2 + (pulseStrength * 1.9) + (overdriveStrength * 1.9);
+      pulseFlash.intensity = (pulseBloom * 5.6) + (overdriveStrength * 2.6);
+      pulseFlash.distance = 30 + (pulseStrength * 10) + (overdriveStrength * 8);
+
+      spinBands.children.forEach((band, index) => {
+        band.rotation.y += (0.018 + (index * 0.006)) * overdriveStrength;
+        band.rotation.z += (index % 2 === 0 ? 1 : -1) * (0.024 + (index * 0.008)) * overdriveStrength;
+        band.material.opacity = overdriveStrength * (0.34 - (index * 0.06));
+      });
+
+      for (let i = 0; i < sparkCount; i += 1) {
+        const offset = i * 3;
+        const travel = 2.05 + (pulseProgress * (2.1 + (sparkDirections[i].length() * 1.15)));
+
+        sparkPositions[offset + 0] = sparkDirections[i].x * travel;
+        sparkPositions[offset + 1] = sparkDirections[i].y * travel;
+        sparkPositions[offset + 2] = sparkDirections[i].z * travel;
+      }
+
+      sparkGeometry.attributes.position.needsUpdate = pulseStrength > 0;
+      sparkCloud.material.opacity = pulseStrength * 0.82;
+      sparkCloud.material.size = 0.11 + (pulseStrength * 0.06) + (pulseBloom * 0.03);
+      sparkCloud.rotation.y += 0.01 + (overdriveStrength * 0.03);
+      sparkCloud.rotation.x += 0.004 + (overdrivePulse * 0.01);
 
       renderer.render(scene, camera);
     }
