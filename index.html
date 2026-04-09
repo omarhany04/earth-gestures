@@ -307,6 +307,7 @@
 
     <div class="tips">
       <div class="chip">One hand + pinch: grab and rotate</div>
+      <div class="chip">Twist hand left/right: tilt Earth</div>
       <div class="chip">Two hands: spread or close to zoom</div>
       <div class="chip">One fist: fire an energy pulse</div>
       <div class="chip">Two fists: reset the globe view</div>
@@ -560,6 +561,7 @@
       rightHand: null,
       handsForOverlay: [],
       lastGrabPoint: null,
+      lastSingleHandAngle: null,
       lastTwoHandDistance: null,
       lastTwoHandMidpoint: null,
       lastTwoHandAngle: null,
@@ -624,6 +626,10 @@
       return Math.hypot(a.x - b.x, a.y - b.y);
     }
 
+    function normalizeAngle(angle) {
+      return Math.atan2(Math.sin(angle), Math.cos(angle));
+    }
+
     function averagePoints(points) {
       const sum = points.reduce(
         (accumulator, point) => {
@@ -646,6 +652,10 @@
 
     function getGrabPoint(hand) {
       return averagePoints([hand[8], hand[9]]);
+    }
+
+    function getHandAngle(hand) {
+      return Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
     }
 
     function getPinchStrength(hand) {
@@ -685,11 +695,13 @@
         const clenchStrength = getClenchStrength(hand);
         const palm = getPalmCenter(hand);
         const grab = getGrabPoint(hand);
+        const handAngle = getHandAngle(hand);
         const descriptor = {
           landmarks: hand,
           label,
           palm,
           grab,
+          handAngle,
           pinchStrength,
           clenchStrength
         };
@@ -720,6 +732,7 @@
 
     function resetSingleHandState() {
       gesture.lastGrabPoint = null;
+      gesture.lastSingleHandAngle = null;
     }
 
     function resetTwoHandState() {
@@ -782,6 +795,8 @@
           gesture.tracking = "Energy fired";
         }
 
+        gesture.lastSingleHandAngle = activeHand.handAngle;
+
         return;
       }
 
@@ -791,13 +806,24 @@
       gesture.mode = pinching ? "Grab Rotate" : "Hand Hover";
       gesture.tracking = "1 hand live";
       gesture.hint = pinching
-        ? "Pinch with one hand and move it to rotate the Earth."
-        : "One hand is visible. Pinch to rotate or clench into a fist to trigger a pulse.";
+        ? "Pinch with one hand and move it to rotate the Earth. Twist your hand left or right to tilt it."
+        : "One hand is visible. Pinch to rotate, twist your hand while grabbing to tilt, or clench into a fist to trigger a pulse.";
 
       resetTwoHandState();
 
+      if (gesture.lastSingleHandAngle !== null) {
+        const angleDelta = normalizeAngle(activeHand.handAngle - gesture.lastSingleHandAngle);
+        gesture.rollTarget = clamp(
+          gesture.rollTarget + (angleDelta * 1.85),
+          -0.65,
+          0.65
+        );
+      }
+
+      gesture.lastSingleHandAngle = activeHand.handAngle;
+
       if (!pinching) {
-        resetSingleHandState();
+        gesture.lastGrabPoint = null;
         return;
       }
 
@@ -918,7 +944,7 @@
       if (handCount === 0) {
         gesture.mode = "Idle";
         gesture.tracking = "No hands";
-        gesture.hint = "Show one hand and pinch to grab the globe, clench one fist for a pulse, or clench two fists to reset.";
+        gesture.hint = "Show one hand and pinch to grab the globe, twist your hand to tilt it, clench one fist for a pulse, or clench two fists to reset.";
         resetSingleHandState();
         resetTwoHandState();
         gesture.pulseHoldStart = null;
@@ -967,7 +993,7 @@
         await mediaPipeCamera.start();
         gesture.mode = "Ready";
         gesture.tracking = "Camera live";
-        gesture.hint = "Show one hand and pinch to start rotating the planet.";
+        gesture.hint = "Show one hand and pinch to start rotating the planet, then twist your wrist left or right to tilt it.";
       } catch (error) {
         console.error("Unable to start MediaPipe camera:", error);
         gesture.mode = "Camera Blocked";
