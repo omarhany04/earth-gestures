@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gesture Earth</title>
+  <link rel="icon" type="image/png" href="Logo.png" />
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -661,7 +662,7 @@
     }
 
     function getHandAngle(hand) {
-      return Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
+      return Math.atan2(hand[9].y - hand[0].y, hand[9].x - hand[0].x);
     }
 
     function getPinchStrength(hand) {
@@ -798,7 +799,7 @@
           gesture.tracking = "Energy fired";
         }
 
-        gesture.lastSingleHandAngle = activeHand.handAngle;
+        gesture.lastSingleHandAngle = null;
 
         return;
       }
@@ -820,16 +821,13 @@
         return;
       }
 
-      if (gesture.lastSingleHandAngle !== null) {
+      if (gesture.lastSingleHandAngle === null) {
+        gesture.lastSingleHandAngle = activeHand.handAngle;
+      } else {
         const angleDelta = normalizeAngle(activeHand.handAngle - gesture.lastSingleHandAngle);
-        gesture.rollTarget = clamp(
-          gesture.rollTarget + (angleDelta * 1.85),
-          -0.65,
-          0.65
-        );
+        const desiredRoll = clamp(angleDelta * 2.8, -0.95, 0.95);
+        gesture.rollTarget = lerp(gesture.rollTarget, desiredRoll, 0.28);
       }
-
-      gesture.lastSingleHandAngle = activeHand.handAngle;
 
       const currentGrab = activeHand.grab;
 
