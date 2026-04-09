@@ -288,7 +288,7 @@
       Gesture Navigation
     </div>
     <h1>Gesture Earth</h1>
-    <p class="lead">A camera-driven globe that responds only to your hands. Pinch and drag with one hand to grab the planet, then use two hands to zoom with smooth depth control.</p>
+    <p class="lead">A camera-driven globe that responds only to your hands. Pinch and drag with one hand to grab the planet, use two hands to zoom, and squeeze into a fist to trigger special reactions.</p>
 
     <div class="status-grid">
       <div class="card mode">
@@ -308,7 +308,8 @@
     <div class="tips">
       <div class="chip">One hand + pinch: grab and rotate</div>
       <div class="chip">Two hands: spread or close to zoom</div>
-      <div class="chip">Open hand: hover without moving the globe</div>
+      <div class="chip">One fist: fire an energy pulse</div>
+      <div class="chip">Two fists: reset the globe view</div>
     </div>
 
     <p id="hint" class="hint"><strong>Status:</strong> Requesting webcam access for gesture tracking.</p>
@@ -425,6 +426,84 @@
     );
     earthRig.add(outerHalo);
 
+    const orbitRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.42, 0.022, 20, 240),
+      new THREE.MeshBasicMaterial({
+        color: 0x71deff,
+        transparent: true,
+        opacity: 0.18,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    orbitRing.rotation.x = Math.PI / 2.15;
+    orbitRing.rotation.z = 0.22;
+    earthRig.add(orbitRing);
+
+    const pulseShell = new THREE.Mesh(
+      new THREE.SphereGeometry(2.2, 96, 96),
+      new THREE.MeshBasicMaterial({
+        color: 0x7ce7ff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide
+      })
+    );
+    earthRig.add(pulseShell);
+
+    const shockwaveRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.32, 0.036, 20, 240),
+      new THREE.MeshBasicMaterial({
+        color: 0xa4f5ff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    shockwaveRing.rotation.x = Math.PI / 2;
+    earthRig.add(shockwaveRing);
+
+    const nodePositions = [];
+    const nodeColors = [];
+
+    for (let i = 0; i < 220; i += 1) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+      const radius = 2.06;
+
+      nodePositions.push(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.sin(phi) * Math.sin(theta),
+        radius * Math.cos(phi)
+      );
+
+      const tint = Math.random();
+      nodeColors.push(0.45 + (tint * 0.25), 0.72 + (tint * 0.18), 1);
+    }
+
+    const nodesGeometry = new THREE.BufferGeometry();
+    nodesGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(nodePositions, 3)
+    );
+    nodesGeometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(nodeColors, 3)
+    );
+
+    const networkNodes = new THREE.Points(
+      nodesGeometry,
+      new THREE.PointsMaterial({
+        size: 0.05,
+        transparent: true,
+        opacity: 0.48,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    earthRig.add(networkNodes);
+
     const starPositions = [];
     const starColors = [];
 
@@ -484,15 +563,32 @@
       lastTwoHandDistance: null,
       lastTwoHandMidpoint: null,
       lastTwoHandAngle: null,
+      pulseHoldStart: null,
+      pulseReady: true,
+      resetHoldStart: null,
+      resetReady: true,
+      lastPulseAt: -Infinity,
+      lastResetAt: -Infinity,
+      homeBlend: 0,
       confidence: 0
     };
 
     const MIN_DISTANCE = 3.1;
     const MAX_DISTANCE = 10;
+    const HOME_DISTANCE = 6.4;
+    const HOME_ROTATION_X = 0.16;
+    const HOME_ROTATION_Y = 0.25;
     const AUTO_SPIN = 0.0025;
     const ROTATION_DAMPING = 0.18;
     const CAMERA_DAMPING = 0.12;
     const ROLL_DAMPING = 0.08;
+    const PULSE_HOLD_MS = 260;
+    const RESET_HOLD_MS = 380;
+    const PULSE_DURATION_MS = 1200;
+    const RESET_FLASH_MS = 950;
+    const ATMOSPHERE_BASE_OPACITY = 0.16;
+    const HALO_BASE_OPACITY = 0.035;
+    const ORBIT_RING_BASE_OPACITY = 0.18;
 
     const HAND_CONNECTIONS = [
       [0, 1], [1, 2], [2, 3], [3, 4],
@@ -559,6 +655,22 @@
       return clamp(1 - ((ratio - 0.15) / 0.45), 0, 1);
     }
 
+    function getClenchStrength(hand) {
+      const palm = getPalmCenter(hand);
+      const palmWidth = pointDistance(hand[5], hand[17]) || 1;
+      const fingerTips = [8, 12, 16, 20];
+
+      const curledFingers = fingerTips.reduce((sum, tipIndex) => {
+        const ratio = pointDistance(hand[tipIndex], palm) / palmWidth;
+        return sum + clamp(1 - ((ratio - 0.48) / 0.68), 0, 1);
+      }, 0) / fingerTips.length;
+
+      const thumbRatio = pointDistance(hand[4], hand[2]) / palmWidth;
+      const thumbCurl = clamp(1 - ((thumbRatio - 0.26) / 0.6), 0, 1);
+
+      return clamp((curledFingers * 0.82) + (thumbCurl * 0.18), 0, 1);
+    }
+
     function assignHands(results) {
       const landmarks = results.multiHandLandmarks || [];
       const handedness = results.multiHandedness || [];
@@ -570,6 +682,7 @@
       landmarks.forEach((hand, index) => {
         const label = getHandednessLabel({ multiHandedness: handedness }, index);
         const pinchStrength = getPinchStrength(hand);
+        const clenchStrength = getClenchStrength(hand);
         const palm = getPalmCenter(hand);
         const grab = getGrabPoint(hand);
         const descriptor = {
@@ -577,7 +690,8 @@
           label,
           palm,
           grab,
-          pinchStrength
+          pinchStrength,
+          clenchStrength
         };
 
         gesture.handsForOverlay.push(descriptor);
@@ -614,14 +728,71 @@
       gesture.lastTwoHandAngle = null;
     }
 
+    function triggerPulseBurst() {
+      gesture.lastPulseAt = performance.now();
+      gesture.mode = "Pulse Burst";
+      gesture.tracking = "Energy fired";
+      gesture.hint = "Single-hand squeeze detected. An energy pulse rippled through the globe.";
+      gesture.smoothedRotationInputY += 0.015;
+    }
+
+    function triggerHomeReset() {
+      gesture.lastResetAt = performance.now();
+      gesture.mode = "Home Reset";
+      gesture.tracking = "View recentered";
+      gesture.hint = "Double-fist squeeze detected. Returning the globe to its home view.";
+      gesture.targetDistance = HOME_DISTANCE;
+      gesture.homeBlend = 1;
+      gesture.rollTarget = 0;
+      gesture.smoothedRotationInputX = 0;
+      gesture.smoothedRotationInputY = 0;
+      gesture.rotationVelocityX = 0;
+      gesture.rotationVelocityY = 0;
+    }
+
     function useSingleHandRotation(activeHand) {
+      const now = performance.now();
       const pinching = activeHand.pinchStrength > 0.72;
+      const clenching = activeHand.clenchStrength > 0.76;
+
+      gesture.resetHoldStart = null;
+      gesture.resetReady = true;
+
+      if (clenching && !pinching) {
+        gesture.mode = "Squeeze Charge";
+        gesture.tracking = "1 hand live";
+        gesture.hint = gesture.pulseReady
+          ? "Hold a clenched fist briefly to fire an energy pulse."
+          : "Release your fist to arm the next pulse.";
+
+        resetTwoHandState();
+        resetSingleHandState();
+
+        if (gesture.pulseHoldStart === null) {
+          gesture.pulseHoldStart = now;
+        }
+
+        if (gesture.pulseReady && (now - gesture.pulseHoldStart) >= PULSE_HOLD_MS) {
+          triggerPulseBurst();
+          gesture.pulseReady = false;
+        }
+
+        if (!gesture.pulseReady && (now - gesture.lastPulseAt) < 520) {
+          gesture.mode = "Pulse Burst";
+          gesture.tracking = "Energy fired";
+        }
+
+        return;
+      }
+
+      gesture.pulseHoldStart = null;
+      gesture.pulseReady = true;
 
       gesture.mode = pinching ? "Grab Rotate" : "Hand Hover";
       gesture.tracking = "1 hand live";
       gesture.hint = pinching
         ? "Pinch with one hand and move it to rotate the Earth."
-        : "One hand is visible. Pinch thumb and index finger together to grab the globe.";
+        : "One hand is visible. Pinch to rotate or clench into a fist to trigger a pulse.";
 
       resetTwoHandState();
 
@@ -652,9 +823,45 @@
     }
 
     function useTwoHandZoom(leftHand, rightHand) {
+      const now = performance.now();
+      const doubleClench = leftHand.clenchStrength > 0.73 && rightHand.clenchStrength > 0.73;
+
+      gesture.pulseHoldStart = null;
+      gesture.pulseReady = true;
+
+      if (doubleClench) {
+        gesture.mode = "Dual Squeeze";
+        gesture.tracking = "2 hands live";
+        gesture.hint = gesture.resetReady
+          ? "Hold both fists briefly to reset the globe and zoom."
+          : "Release both fists to arm the next reset.";
+
+        resetSingleHandState();
+        resetTwoHandState();
+
+        if (gesture.resetHoldStart === null) {
+          gesture.resetHoldStart = now;
+        }
+
+        if (gesture.resetReady && (now - gesture.resetHoldStart) >= RESET_HOLD_MS) {
+          triggerHomeReset();
+          gesture.resetReady = false;
+        }
+
+        if (!gesture.resetReady && (now - gesture.lastResetAt) < 640) {
+          gesture.mode = "Home Reset";
+          gesture.tracking = "View recentered";
+        }
+
+        return;
+      }
+
+      gesture.resetHoldStart = null;
+      gesture.resetReady = true;
+
       gesture.mode = "Dual Zoom";
       gesture.tracking = "2 hands live";
-      gesture.hint = "Keep both hands in frame. Move them apart to zoom in and closer together to zoom out.";
+      gesture.hint = "Keep both hands in frame. Move them apart to zoom in and closer together to zoom out. Clench both fists to reset.";
       resetSingleHandState();
 
       const midpoint = averagePoints([leftHand.palm, rightHand.palm]);
@@ -711,9 +918,13 @@
       if (handCount === 0) {
         gesture.mode = "Idle";
         gesture.tracking = "No hands";
-        gesture.hint = "Show one hand and pinch to grab the globe, or show two hands to zoom.";
+        gesture.hint = "Show one hand and pinch to grab the globe, clench one fist for a pulse, or clench two fists to reset.";
         resetSingleHandState();
         resetTwoHandState();
+        gesture.pulseHoldStart = null;
+        gesture.pulseReady = true;
+        gesture.resetHoldStart = null;
+        gesture.resetReady = true;
       } else if (handCount === 1) {
         useSingleHandRotation(gesture.handsForOverlay[0]);
       } else {
@@ -780,7 +991,8 @@
       const hue = index === 0 ? "113, 222, 255" : "125, 255, 204";
       const solid = `rgba(${hue}, 0.95)`;
       const soft = `rgba(${hue}, 0.2)`;
-      const pinchGlow = `rgba(${hue}, ${0.12 + (hand.pinchStrength * 0.35)})`;
+      const gestureGlowStrength = Math.max(hand.pinchStrength, hand.clenchStrength * 0.9);
+      const pinchGlow = `rgba(${hue}, ${0.12 + (gestureGlowStrength * 0.35)})`;
 
       overlayContext.lineWidth = 2;
       overlayContext.strokeStyle = soft;
@@ -811,7 +1023,7 @@
       overlayContext.arc(
         hand.grab.x * window.innerWidth,
         hand.grab.y * window.innerHeight,
-        18 + (hand.pinchStrength * 16),
+        18 + (gestureGlowStrength * 16),
         0,
         Math.PI * 2
       );
@@ -844,6 +1056,9 @@
 
     function animate() {
       requestAnimationFrame(animate);
+      const now = performance.now();
+      const pulseStrength = clamp(1 - ((now - gesture.lastPulseAt) / PULSE_DURATION_MS), 0, 1);
+      const resetStrength = clamp(1 - ((now - gesture.lastResetAt) / RESET_FLASH_MS), 0, 1);
 
       gesture.rotationVelocityX = lerp(
         gesture.rotationVelocityX,
@@ -864,9 +1079,19 @@
       );
       earthRig.rotation.z = lerp(earthRig.rotation.z, gesture.rollTarget, ROLL_DAMPING);
 
+      if (gesture.homeBlend > 0.001) {
+        earthRig.rotation.x = lerp(earthRig.rotation.x, HOME_ROTATION_X, 0.16);
+        earthRig.rotation.y = lerp(earthRig.rotation.y, HOME_ROTATION_Y, 0.11);
+        earthRig.rotation.z = lerp(earthRig.rotation.z, 0, 0.16);
+        gesture.homeBlend *= 0.9;
+      }
+
       clouds.rotation.y += 0.0018;
+      orbitRing.rotation.z += 0.0022 + (pulseStrength * 0.01);
+      orbitRing.rotation.y += 0.0016;
+      shockwaveRing.rotation.z += 0.012;
       stars.rotation.y += 0.00005;
-      stars.rotation.x += 0.000015;
+      stars.rotation.x += 0.000015 + (pulseStrength * 0.00025) + (resetStrength * 0.00018);
 
       gesture.smoothedRotationInputX *= 0.82;
       gesture.smoothedRotationInputY *= 0.82;
@@ -879,6 +1104,18 @@
       );
       camera.position.z = gesture.activeDistance;
       camera.lookAt(cameraTarget);
+
+      pulseShell.scale.setScalar(1 + ((1 - pulseStrength) * 0.65));
+      pulseShell.material.opacity = pulseStrength * 0.24;
+      shockwaveRing.scale.setScalar(1 + ((1 - pulseStrength) * 1.45));
+      shockwaveRing.material.opacity = pulseStrength * 0.48;
+      atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.12);
+      outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.08) + (resetStrength * 0.06);
+      orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.08);
+      networkNodes.material.opacity = 0.48 + (pulseStrength * 0.28) + (resetStrength * 0.16);
+      networkNodes.rotation.y += 0.0028 + (pulseStrength * 0.012);
+      networkNodes.rotation.x = Math.sin(now * 0.00025) * 0.12;
+      stars.material.size = 2 + (pulseStrength * 1.6) + (resetStrength * 0.9);
 
       renderer.render(scene, camera);
     }
