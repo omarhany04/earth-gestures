@@ -57,10 +57,6 @@
       display: block;
     }
 
-    video {
-      display: none;
-    }
-
     #webgl {
       position: fixed;
       inset: 0;
@@ -210,9 +206,60 @@
       backdrop-filter: blur(14px);
     }
 
+    .camera-preview {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 4;
+      width: min(320px, calc(100vw - 36px));
+      aspect-ratio: 4 / 3;
+      padding: 10px;
+      border-radius: 22px;
+      background: rgba(8, 15, 28, 0.72);
+      border: 1px solid rgba(145, 220, 255, 0.18);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+      backdrop-filter: blur(16px) saturate(130%);
+      overflow: hidden;
+    }
+
+    .camera-preview::before {
+      content: "Live Camera";
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 2;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(2, 7, 14, 0.62);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    #video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 16px;
+      object-fit: cover;
+      background: #020307;
+      transform: scaleX(-1);
+      opacity: 0.92;
+    }
+
     @media (max-width: 720px) {
       .hud {
         padding: 16px 15px 14px;
+      }
+
+      .camera-preview {
+        top: auto;
+        right: 18px;
+        bottom: 110px;
+        width: min(240px, calc(100vw - 36px));
       }
 
       .status-grid {
@@ -230,6 +277,10 @@
 <body>
   <canvas id="webgl"></canvas>
   <canvas id="overlay"></canvas>
+
+  <div class="camera-preview">
+    <video id="video" playsinline autoplay muted></video>
+  </div>
 
   <div class="hud">
     <div class="eyebrow">
@@ -266,8 +317,6 @@
   <div class="footer-note">
     The hand overlay is a live guide only. If tracking feels noisy, step back a little, face the camera directly, and keep both hands inside frame during zoom.
   </div>
-
-  <video id="video" playsinline></video>
 
   <script>
     const webglCanvas = document.getElementById("webgl");
