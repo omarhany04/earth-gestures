@@ -21,36 +21,49 @@
   </div>
 
   <div class="hud">
-    <div class="eyebrow">
-      <span class="dot"></span>
-      Gesture Navigation
+    <div class="hud-top">
+      <div class="eyebrow">
+        <span class="dot"></span>
+        Gesture Navigation
+      </div>
+      <button id="hudToggle" class="hud-toggle" type="button" aria-expanded="false">Expand</button>
     </div>
     <h1>Gesture Earth</h1>
-    <p class="lead">A camera-driven globe that responds only to your hands. Pinch and drag with one hand to grab the planet, use two hands to zoom, and squeeze into a fist to trigger special reactions.</p>
 
-    <div class="status-grid">
-      <div class="card mode">
-        <span class="label">Mode</span>
-        <span id="modeValue" class="value">Booting</span>
-      </div>
-      <div class="card zoom">
-        <span class="label">Zoom</span>
-        <span id="zoomValue" class="value">100%</span>
-      </div>
-      <div class="card tracking">
-        <span class="label">Tracking</span>
-        <span id="trackingValue" class="value">Initializing camera</span>
-      </div>
+    <div class="gesture-bar" aria-label="Core gestures">
+      <span class="gesture-pill">One hand + pinch: rotate</span>
+      <span class="gesture-pill">Two hands: zoom</span>
+      <span class="gesture-pill">One fist: energy pulse</span>
+      <span class="gesture-pill">Two fists: overdrive spin</span>
     </div>
 
-    <div class="tips">
-      <div class="chip">One hand + pinch: grab and rotate</div>
-      <div class="chip">Two hands: spread or close to zoom</div>
-      <div class="chip">One fist: fire an energy pulse</div>
-      <div class="chip">Two fists: trigger overdrive spin</div>
-    </div>
+    <div class="hud-body">
+      <p class="lead">A camera-driven globe that responds only to your hands. Pinch and drag with one hand to grab the planet, use two hands to zoom, and squeeze into a fist to trigger special reactions.</p>
 
-    <p id="hint" class="hint"><strong>Status:</strong> Requesting webcam access for gesture tracking.</p>
+      <div class="status-grid">
+        <div class="card mode">
+          <span class="label">Mode</span>
+          <span id="modeValue" class="value">Booting</span>
+        </div>
+        <div class="card zoom">
+          <span class="label">Zoom</span>
+          <span id="zoomValue" class="value">100%</span>
+        </div>
+        <div class="card tracking">
+          <span class="label">Tracking</span>
+          <span id="trackingValue" class="value">Initializing camera</span>
+        </div>
+      </div>
+
+      <div class="tips">
+        <div class="chip">One hand + pinch: grab and rotate</div>
+        <div class="chip">Two hands: spread or close to zoom</div>
+        <div class="chip">One fist: fire an energy pulse</div>
+        <div class="chip">Two fists: trigger overdrive spin</div>
+      </div>
+
+      <p id="hint" class="hint"><strong>Status:</strong> Requesting webcam access for gesture tracking.</p>
+    </div>
   </div>
 
   <div class="footer-note">

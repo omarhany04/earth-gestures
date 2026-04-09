@@ -1,12 +1,81 @@
-const webglCanvas = document.getElementById("webgl");
+    const webglCanvas = document.getElementById("webgl");
     const overlayCanvas = document.getElementById("overlay");
     const overlayContext = overlayCanvas.getContext("2d");
     const video = document.getElementById("video");
+
+    function isMobileView() {
+      return window.matchMedia("(max-width: 720px)").matches;
+    }
+
+    function getRendererPixelRatio() {
+      return Math.min(window.devicePixelRatio, isMobileView() ? 1.25 : 2);
+    }
+
+    function getOverlayPixelRatio() {
+      return Math.min(window.devicePixelRatio, isMobileView() ? 1.5 : 2);
+    }
 
     const modeValue = document.getElementById("modeValue");
     const zoomValue = document.getElementById("zoomValue");
     const trackingValue = document.getElementById("trackingValue");
     const hint = document.getElementById("hint");
+    const hud = document.querySelector(".hud");
+    const hudToggle = document.getElementById("hudToggle");
+    const hudMediaQuery = window.matchMedia("(max-width: 720px)");
+
+    let hudExpanded = false;
+
+    function setHudExpanded(nextExpanded) {
+      hudExpanded = nextExpanded;
+
+      if (!hud) {
+        return;
+      }
+
+      if (hudExpanded) {
+        hud.classList.add("is-expanded");
+        hud.classList.remove("is-collapsed");
+      } else {
+        hud.classList.add("is-collapsed");
+        hud.classList.remove("is-expanded");
+      }
+
+      if (hudToggle) {
+        hudToggle.textContent = hudExpanded ? "Collapse" : "Expand";
+        hudToggle.setAttribute("aria-expanded", hudExpanded ? "true" : "false");
+      }
+    }
+
+    function syncHudLayout() {
+      if (!hud) {
+        return;
+      }
+
+      if (hudMediaQuery.matches) {
+        setHudExpanded(false);
+      } else {
+        hud.classList.remove("is-collapsed");
+        hud.classList.remove("is-expanded");
+        if (hudToggle) {
+          hudToggle.setAttribute("aria-expanded", "false");
+        }
+      }
+    }
+
+    if (hudToggle) {
+      hudToggle.addEventListener("click", () => {
+        if (hudMediaQuery.matches) {
+          setHudExpanded(!hudExpanded);
+        }
+      });
+    }
+
+    hudMediaQuery.addEventListener("change", () => {
+      if (!hudMediaQuery.matches) {
+        hudExpanded = false;
+      }
+      syncHudLayout();
+    });
 
     const scene = new THREE.Scene();
 
@@ -17,7 +86,8 @@ const webglCanvas = document.getElementById("webgl");
       2400
     );
     const cameraTarget = new THREE.Vector3(0, 0, 0);
-    camera.position.set(0, 0, 6.4);
+    const initialDistance = isMobileView() ? 12.6 : 6.4;
+    camera.position.set(0, 0, initialDistance);
     camera.lookAt(cameraTarget);
 
     const renderer = new THREE.WebGLRenderer({
@@ -25,7 +95,7 @@ const webglCanvas = document.getElementById("webgl");
       antialias: true,
       alpha: true
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(getRendererPixelRatio());
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputEncoding = THREE.sRGBEncoding;
 
@@ -169,7 +239,7 @@ const webglCanvas = document.getElementById("webgl");
     pulseFlash.position.set(0, 0, 4.5);
     scene.add(pulseFlash);
 
-    const sparkCount = 180;
+    const sparkCount = isMobileView() ? 120 : 180;
     const sparkPositions = new Float32Array(sparkCount * 3);
     const sparkColors = new Float32Array(sparkCount * 3);
     const sparkDirections = [];
@@ -272,7 +342,9 @@ const webglCanvas = document.getElementById("webgl");
     const starPositions = [];
     const starColors = [];
 
-    for (let i = 0; i < 9500; i += 1) {
+    const starCount = isMobileView() ? 4500 : 9500;
+
+    for (let i = 0; i < starCount; i += 1) {
       const radius = 900 + Math.random() * 1200;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos((Math.random() * 2) - 1);
@@ -300,7 +372,7 @@ const webglCanvas = document.getElementById("webgl");
     const stars = new THREE.Points(
       starsGeometry,
       new THREE.PointsMaterial({
-        size: 2,
+        size: isMobileView() ? 1.6 : 2,
         sizeAttenuation: true,
         vertexColors: true,
         transparent: true,
@@ -317,8 +389,8 @@ const webglCanvas = document.getElementById("webgl");
       rotationVelocityX: 0,
       rotationVelocityY: 0,
       rollTarget: 0,
-      targetDistance: 6.4,
-      activeDistance: 6.4,
+      targetDistance: initialDistance,
+      activeDistance: initialDistance,
       smoothedRotationInputX: 0,
       smoothedRotationInputY: 0,
       leftHand: null,
@@ -338,7 +410,7 @@ const webglCanvas = document.getElementById("webgl");
     };
 
     const MIN_DISTANCE = 3.1;
-    const MAX_DISTANCE = 10;
+    const MAX_DISTANCE = isMobileView() ? 18 : 10;
     const AUTO_SPIN = 0.0025;
     const ROTATION_DAMPING = 0.18;
     const CAMERA_DAMPING = 0.12;
@@ -745,12 +817,15 @@ const webglCanvas = document.getElementById("webgl");
     });
     hands.onResults(onResults);
 
+    const cameraWidth = isMobileView() ? 640 : 960;
+    const cameraHeight = isMobileView() ? 480 : 720;
+
     const mediaPipeCamera = new Camera(video, {
       onFrame: async () => {
         await hands.send({ image: video });
       },
-      width: 960,
-      height: 720
+      width: cameraWidth,
+      height: cameraHeight
     });
 
     async function startHandTracking() {
@@ -770,7 +845,7 @@ const webglCanvas = document.getElementById("webgl");
     }
 
     function resizeOverlay() {
-      const pixelRatio = Math.min(window.devicePixelRatio, 2);
+      const pixelRatio = getOverlayPixelRatio();
       overlayCanvas.width = Math.floor(window.innerWidth * pixelRatio);
       overlayCanvas.height = Math.floor(window.innerHeight * pixelRatio);
       overlayCanvas.style.width = `${window.innerWidth}px`;
@@ -951,7 +1026,7 @@ const webglCanvas = document.getElementById("webgl");
     function handleResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setPixelRatio(getRendererPixelRatio());
       renderer.setSize(window.innerWidth, window.innerHeight);
       resizeOverlay();
       drawOverlay();
@@ -961,5 +1036,6 @@ const webglCanvas = document.getElementById("webgl");
 
     resizeOverlay();
     setHUD();
+    syncHudLayout();
     startHandTracking();
     animate();
