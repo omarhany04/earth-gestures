@@ -443,7 +443,7 @@
     const pulseShell = new THREE.Mesh(
       new THREE.SphereGeometry(2.2, 96, 96),
       new THREE.MeshBasicMaterial({
-        color: 0x7ce7ff,
+        color: 0xff4d2d,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -455,7 +455,7 @@
     const shockwaveRing = new THREE.Mesh(
       new THREE.TorusGeometry(2.32, 0.036, 20, 240),
       new THREE.MeshBasicMaterial({
-        color: 0xa4f5ff,
+        color: 0xff9b54,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending
@@ -591,6 +591,16 @@
     const ATMOSPHERE_BASE_OPACITY = 0.16;
     const HALO_BASE_OPACITY = 0.035;
     const ORBIT_RING_BASE_OPACITY = 0.18;
+    const ATMOSPHERE_BASE_COLOR = new THREE.Color(0x4dc5ff);
+    const ATMOSPHERE_BOOM_COLOR = new THREE.Color(0xff5c33);
+    const HALO_BASE_COLOR = new THREE.Color(0x1b6cff);
+    const HALO_BOOM_COLOR = new THREE.Color(0xff2d1f);
+    const ORBIT_RING_BASE_COLOR = new THREE.Color(0x71deff);
+    const ORBIT_RING_BOOM_COLOR = new THREE.Color(0xff6a3d);
+    const PULSE_SHELL_BASE_COLOR = new THREE.Color(0xff4d2d);
+    const PULSE_SHELL_HOT_COLOR = new THREE.Color(0xffd36a);
+    const SHOCKWAVE_BASE_COLOR = new THREE.Color(0xff7a45);
+    const SHOCKWAVE_HOT_COLOR = new THREE.Color(0xfff0a6);
 
     const HAND_CONNECTIONS = [
       [0, 1], [1, 2], [2, 3], [3, 4],
@@ -1135,6 +1145,11 @@
       pulseShell.material.opacity = pulseStrength * 0.24;
       shockwaveRing.scale.setScalar(1 + ((1 - pulseStrength) * 1.45));
       shockwaveRing.material.opacity = pulseStrength * 0.48;
+      pulseShell.material.color.copy(PULSE_SHELL_BASE_COLOR).lerp(PULSE_SHELL_HOT_COLOR, pulseStrength * 0.72);
+      shockwaveRing.material.color.copy(SHOCKWAVE_BASE_COLOR).lerp(SHOCKWAVE_HOT_COLOR, pulseStrength * 0.6);
+      atmosphere.material.color.copy(ATMOSPHERE_BASE_COLOR).lerp(ATMOSPHERE_BOOM_COLOR, pulseStrength * 0.92);
+      outerHalo.material.color.copy(HALO_BASE_COLOR).lerp(HALO_BOOM_COLOR, pulseStrength * 0.95);
+      orbitRing.material.color.copy(ORBIT_RING_BASE_COLOR).lerp(ORBIT_RING_BOOM_COLOR, pulseStrength * 0.86);
       atmosphere.material.opacity = ATMOSPHERE_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.12);
       outerHalo.material.opacity = HALO_BASE_OPACITY + (pulseStrength * 0.08) + (resetStrength * 0.06);
       orbitRing.material.opacity = ORBIT_RING_BASE_OPACITY + (pulseStrength * 0.2) + (resetStrength * 0.08);
