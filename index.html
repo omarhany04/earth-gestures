@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gesture Earth</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel-bg: rgba(6, 14, 24, 0.72);
+      --panel-border: rgba(132, 211, 255, 0.24);
+      --panel-text: #d8f0ff;
+      --accent: #69d2ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top, #10243d 0%, #050910 40%, #010205 100%);
+      font-family: "Segoe UI", sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    video {
+      display: none;
+    }
+
+    .hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 10;
+      width: min(360px, calc(100vw - 36px));
+      padding: 14px 16px;
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      color: var(--panel-text);
+      line-height: 1.4;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    .hud h1 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+    }
+
+    .hud p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    .hud p + p {
+      margin-top: 8px;
+    }
+
+    .status {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <h1>Gesture Earth</h1>
+    <p>Drag to orbit the globe. Use the mouse wheel or a two-hand pinch gesture to zoom.</p>
+    <p id="status" class="status">Starting camera for hand tracking...</p>
+  </div>
+
+  <video id="video" playsinline></video>
+
+  <script>
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      2000
+    );
+    camera.position.set(0, 0, 6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 3;
+    controls.maxDistance = 10;
+
+    const ambientLight = new THREE.AmbientLight(0x8eb8ff, 0.65);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.PointLight(0xffffff, 1.8, 40);
+    sunLight.position.set(8, 4, 10);
+    scene.add(sunLight);
+
+    const textureLoader = new THREE.TextureLoader();
+    const earthTexture = textureLoader.load(
+      "https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg"
+    );
+
+    const earth = new THREE.Mesh(
+      new THREE.SphereGeometry(2, 64, 64),
+      new THREE.MeshStandardMaterial({
+        map: earthTexture,
+        roughness: 0.95,
+        metalness: 0.02
+      })
+    );
+    scene.add(earth);
+
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(2.14, 64, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x3dbdff,
+        transparent: true,
+        opacity: 0.12,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide
+      })
+    );
+    scene.add(glow);
+
+    const starVertices = [];
+    for (let i = 0; i < 7000; i += 1) {
+      starVertices.push(
+        (Math.random() - 0.5) * 1600,
+        (Math.random() - 0.5) * 1600,
+        (Math.random() - 0.5) * 1600
+      );
+    }
+
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(starVertices, 3)
+    );
+
+    const stars = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 1.1,
+        sizeAttenuation: true
+      })
+    );
+    scene.add(stars);
+
+    const video = document.getElementById("video");
+    const status = document.getElementById("status");
+
+    let lastPinchDistance = null;
+
+    function getCurrentDistance() {
+      return camera.position.distanceTo(controls.target);
+    }
+
+    function setCameraDistance(nextDistance) {
+      const offset = camera.position.clone().sub(controls.target);
+      offset.setLength(nextDistance);
+      camera.position.copy(controls.target).add(offset);
+    }
+
+    function distance(pointA, pointB) {
+      return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
+    }
+
+    function onResults(results) {
+      const landmarks = results.multiHandLandmarks || [];
+
+      if (landmarks.length === 2) {
+        const hand1 = landmarks[0][8];
+        const hand2 = landmarks[1][8];
+        const pinchDistance = distance(hand1, hand2);
+
+        if (lastPinchDistance !== null) {
+          const delta = pinchDistance - lastPinchDistance;
+          const zoomScale = 1 - delta * 2.5;
+          const nextDistance = THREE.MathUtils.clamp(
+            getCurrentDistance() * zoomScale,
+            controls.minDistance,
+            controls.maxDistance
+          );
+
+          setCameraDistance(nextDistance);
+        }
+
+        lastPinchDistance = pinchDistance;
+        status.textContent = "Hand tracking active: spread hands apart to zoom in, bring them closer to zoom out.";
+        return;
+      }
+
+      lastPinchDistance = null;
+      status.textContent = "Mouse control active. Show both hands to enable pinch zoom.";
+    }
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+    hands.onResults(onResults);
+
+    const mediaPipeCamera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+
+    async function startHandTracking() {
+      try {
+        await mediaPipeCamera.start();
+        status.textContent = "Camera ready. Show both hands to control zoom.";
+      } catch (error) {
+        console.error("Failed to start camera:", error);
+        status.textContent = "Camera access was blocked. Mouse controls still work.";
+      }
+    }
+
+    startHandTracking();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      earth.rotation.y += 0.0018;
+      glow.rotation.y += 0.0012;
+      stars.rotation.y += 0.00008;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
